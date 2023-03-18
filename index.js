@@ -596,7 +596,7 @@ function willCreateIsland(pos) {
          .all(hasId(id))
     ) {
       if (hasId(id)(pos.add(WEST))) {
-        return pos.inDirs([SOUTHWEST, NORTHWEST])
+        return !pos.inDirs([SOUTHWEST, NORTHWEST])
                    .any(hasId(id));
       } else {
         return false;
@@ -623,7 +623,7 @@ function willCreateIsland(pos) {
          .all(hasId(id))
     ) {
       if (hasId(id)(pos.add(NORTH))) {
-        return pos.inDirs([NORTHWEST, NORTHEAST])
+        return !pos.inDirs([NORTHWEST, NORTHEAST])
                    .any(hasId(id));
       } else {
         return false;
@@ -639,7 +639,7 @@ function willCreateIsland(pos) {
     var clockwiseDir = dir.clockwise();
     
     id = getCommonIdInDirs(pos, dir, clockwiseDir);
-    return id != null && hasId(id)(pos.add(dir).add(clockwiseDir));
+    return id != null && !hasId(id)(pos.add(dir).add(clockwiseDir));
   });
 }
 
