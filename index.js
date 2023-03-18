@@ -710,7 +710,6 @@ function generateMine() {
   }
 }
 
-
 /**
  * Populates the game field with mines.
  * 
@@ -818,6 +817,10 @@ function win() {
     }
   }
   
+  playSound(
+    "sound://category_achievements/vibrant_game_postive_achievement_2.mp3"
+  );
+  
   setText("congratText", congratText);
   setScreen("winScreen");
 }
@@ -844,6 +847,8 @@ function lose() {
   }
   
   showElement("clickBlocker");
+  
+  playSound("sound://category_explosion/radioactive_zombie_explode_2.mp3");
   
   isLost = true;
   
@@ -993,6 +998,7 @@ onEvent("gameCanvas", "click", function(event) {
   
   if (event.shiftKey) {
     if (!(state instanceof Open)) {
+      playSound("sound://category_board_games/card_dealing_single.mp3");
       toggleFlag(clickPos);
     }
   } else if (!state.flagged){
@@ -1004,6 +1010,7 @@ onEvent("gameCanvas", "click", function(event) {
     if (state instanceof Mine) {
       lose();
     } else if (state instanceof Close) {
+      playSound("sound://category_app/app_menu_button_4.mp3");
       openCell(clickPos);
     }
   }
@@ -1011,6 +1018,8 @@ onEvent("gameCanvas", "click", function(event) {
 
 
 onEvent("settingsButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
+  
   newDimension = dimension;
   newTotalMines = totalMines;
   
@@ -1025,22 +1034,27 @@ onEvent("settingsButton", "click", function() {
 
 
 onEvent("instructionsButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
   setScreen("instructionsScreen");
 });
 
 
 onEvent("restartButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
   initGame();
 });
 
 
 // Settings screen -------------------------------------------------------------
 onEvent("closeButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
   setScreen("gameScreen");
 });
 
 
 onEvent("saveButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
+  
   dimension = newDimension;
   totalMines = newTotalMines;
   
@@ -1126,6 +1140,7 @@ onEvent("minesSlider", "input", function() {
 
 // Win screen ------------------------------------------------------------------
 onEvent("replayButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
   initGame();
   setScreen("gameScreen");
 });
@@ -1133,6 +1148,7 @@ onEvent("replayButton", "click", function() {
 
 // Instructions screen ---------------------------------------------------------
 onEvent("backButton", "click", function() {
+  playSound("sound://category_app/app_button_click_1.mp3");
   setScreen("gameScreen");
 });
 
