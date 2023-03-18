@@ -272,6 +272,15 @@ function Mine(id) {
 var CANVAS_SIZE = 320;
 
 
+var COLORS = {
+  WHITE: "#ffffff",
+  LIGHT_GREY: "#d1d8e0",
+  GREY: "#a5b1c2",
+  TRANSPARENT: rgb(0, 0, 0, 0),
+  TRANSCLUCENT: rgb(119, 140, 163, 0.4),
+};
+
+
 var NORTH = new Vec2(0, -1);
 var NORTHEAST = new Vec2(1, -1);
 var EAST = new Vec2(1, 0);
@@ -308,6 +317,8 @@ var ORTHO_DIRS = toIter([
 // Customizable gameplay variables
 var dimension = 8;
 var totalMines = 8;
+var newDimension;
+var newTotalMines;
 
 // Sizes for displaying
 var cellSize = CANVAS_SIZE / dimension;
@@ -321,6 +332,22 @@ var grid = [];
 // Mine generation
 var minables = [];
 var currentId = 1;
+
+
+// Game state
+var hasGenMines = false;
+var isLost = false;
+var numRemainingFlags = totalMines;
+var remainingClearCells = dimension * dimension - totalMines;
+
+
+// Timer variables
+var startTime = getTime();
+var totalTime = 0;
+var expectedTime = 0;
+var minutes = 0;
+var seconds = 0;
+var stopTimer = false;
 
 
 // -----------------------------------------------------------------------------
@@ -352,6 +379,26 @@ function not(func) {
   return function(arg) {
     return !func(arg);
   };
+}
+
+
+// See citation [1]
+/**
+ * Returns a two-digit string representation of a positive number.
+ * 
+ * The number is padded with a leading zero when necessary. Mainly used for
+ * displaying time.
+ * 
+ * @param {number} number - the number to represent.
+ * @returns {string}      - the two-digit string representation.
+ */
+function twoDigits(number) {
+  var string = number.toString();
+  if (string.length == 1) {
+    return "0" + string;
+  } else {
+    return string;
+  }
 }
 
 
@@ -434,6 +481,27 @@ function getState(pos) {
 function setState(pos, newState) {
   grid[pos.x + pos.y * dimension] = newState;
 }
+
+
+/**
+ * Toggle the flag state of a unopened or mine cell position.
+ * 
+ * @param {Vec2} - the position to toggle the flag state.
+ */
+function toggleFlag(pos) {
+  var state = getState(pos);
+  
+  if (state.flagged) {
+    drawBlank(pos, COLORS.GREY);
+    state.flagged = false;
+    setNumber("remainingFlagsOutput", ++numRemainingFlags);
+  } else {
+    drawIcon(pos, "flag");
+    state.flagged = true;
+    setNumber("remainingFlagsOutput", --numRemainingFlags);
+  }
+}
+
 
 /**
  * Get the group id of an unempty position.
@@ -643,19 +711,452 @@ function generateMine() {
 }
 
 
-setActiveCanvas("gameCanvas");
-setStrokeColor(rgb(0, 0, 0, 0));
-setFillColor("#cccccc");
-rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-setStrokeColor(rgb(255, 255, 255));
+/**
+ * Populates the game field with mines.
+ * 
+ * @param {Vec2} clickPos - the position of the first click of the game.
+ */
+function populateMines(clickPos) {
+  minables = [];
+  
+  for (var y = 0; y < dimension; y++) {
+    for (var x = 0; x < dimension; x++) {
+      var pos = new Vec2(x, y);
+      
+      if (!clickPos.adjacentTo(pos)) {
+        appendItem(minables, pos.clone());
+      }
+    }
+  }
+
+  for (
+    var numCreatedMines = 0;
+    numCreatedMines < totalMines;
+    numCreatedMines++
+  ) {
+    generateMine();
+  }
+  
+  startTime = getTime();
+  totalTime = 0;
+  expectedTime = 0;
+  minutes = 0;
+  seconds = 0;
+  stopTimer = false;
+  
+  setTimeout(tickTimer, 1000);
+}
 
 
-function drawBlankGrid() {
-  for (var offset = 0; offset <= CANVAS_SIZE; offset += cellSize) {
-    line(offset, 0,      offset,      CANVAS_SIZE);
-    line(0,      offset, CANVAS_SIZE, offset);
+/**
+ * Opens a cell.
+ * 
+ * @param {Vec2} pos - the position to open.
+ */
+function openCell(pos) {
+  var neighbors = pos.neighbors();
+  var mineCount = 0;
+  
+  if (getState(pos).flagged) {
+    setNumber("remainingFlagsOutput", ++numRemainingFlags);
+  }
+  
+  setState(pos, new Open());
+  drawBlank(pos, COLORS.LIGHT_GREY);
+  
+  neighbors.each(function(neighbor) {
+    if (isMine(neighbor)) {
+      mineCount++;
+    }
+  });
+  
+  if (mineCount == 0) {
+    neighbors.each(function(neighbor) {
+      if (isEmpty(neighbor)) {
+        openCell(neighbor);
+      }
+    });
+  } else {
+    drawIcon(pos, "number" + mineCount);
+  }
+  
+  remainingClearCells--;
+  
+  if (remainingClearCells == 0) {
+    win();
   }
 }
 
 
-drawBlankGrid();
+/**
+ * The procedure called when the player wins.
+ */
+function win() {
+  stopTimer = true;
+  
+  var congratText = "You won in";
+  
+  if (minutes == 0) {
+    congratText += " " + seconds + " second";
+    
+    if (seconds > 1) {
+      congratText += "s";
+    }
+  } else {
+    congratText += " " + minutes + " minute";
+    
+    if (minutes > 1) {
+      congratText += "s";
+    }
+    
+    if (seconds > 0) {
+      congratText += " " + seconds + "second";
+      
+      if (seconds > 1) {
+        congratText += "s";
+      }
+    }
+  }
+  
+  setText("congratText", congratText);
+  setScreen("winScreen");
+}
+
+
+/**
+ * The procedure called when the player loses.
+ */
+function lose() {
+  stopTimer = true;
+  
+  for (var y = 0; y < dimension; y++) {
+    for (var x = 0; x < dimension; x++) {
+      var pos = new Vec2(x, y);
+      var state = getState(pos);
+      
+      if (state instanceof Mine && !state.flagged) {
+        drawIcon(pos, "mine");
+      } else if (state instanceof Close && state.flagged) {
+        drawBlank(pos, COLORS.GREY);
+        drawIcon(pos, "wrong");
+      }
+    }
+  }
+  
+  showElement("clickBlocker");
+  
+  isLost = true;
+  
+  setTimeout(function() {
+    if (isLost) {
+      timedLoop(1000, function() {
+        setProperty("restartButton", "background-color", COLORS.TRANSCLUCENT);
+        
+        setTimeout(function() {
+          setProperty("restartButton", "background-color", COLORS.TRANSPARENT);
+        }, 500);
+      });
+    }
+  }, 2000);
+}
+
+
+/**
+ * Ticks the game timer by one second.
+ */
+function tickTimer() {
+  if (!stopTimer) {
+    var newTime = getTime();
+    var deltaTime = newTime - startTime;
+    
+    totalTime += deltaTime;
+    expectedTime += 1000;
+    startTime = newTime;
+    
+    if (seconds == 59) {
+      minutes++;
+      seconds = 0;
+    } else {
+      seconds++;
+    }
+    
+    setText("timerOutput", twoDigits(minutes) + ":" + twoDigits(seconds));
+    setTimeout(tickTimer, 1000 + expectedTime - totalTime);
+  }
+}
+
+
+/**
+ * Draws a blank square.
+ * 
+ * @param {Vec2} pos    - the cell position to draw.
+ * @param {Color} color - the color of the blank square.
+ */
+function drawBlank(pos, color) {
+  setFillColor(color);
+  rect(pos.x * cellSize, pos.y * cellSize, cellSize, cellSize);
+}
+
+
+/**
+ * Draws an icon.
+ * 
+ * @param {Vec2} pos        - the cell position to draw.
+ * @param {string} iconName - the name of the icon.
+ */
+function drawIcon(pos, iconName) {
+  drawImage(
+    iconName + "Image",
+    pos.x * cellSize + margin,
+    pos.y * cellSize + margin,
+    imageSize,
+    imageSize
+  );
+}
+
+
+/**
+ * Initializes the game.
+ */
+function initGame() {
+  currentId = 1;
+  hasGenMines = false;
+  isLost = false;
+  remainingClearCells = dimension * dimension - totalMines;
+  
+  // Stop blinking restart button.
+  stopTimedLoop();
+
+  // Make sure that the game canvas is clickable.
+  hideElement("clickBlocker");
+  
+  // Set flag count.
+  numRemainingFlags = totalMines;
+  setNumber("remainingFlagsOutput", numRemainingFlags);
+  
+  // Set timer.
+  stopTimer = true;
+  setText("timerOutput", "00:00");
+  
+  // Set number of clear cells needed to click to win.
+  remainingClearCells = dimension * dimension - totalMines;
+  
+  // Inititialize all cell to be closed.
+  grid = [];
+  
+  var numCells = dimension * dimension;
+
+  for (var i = 0; i < numCells; i++) {
+    appendItem(grid, new Close());
+  }
+  
+  // Draw empty grid.
+  setStrokeColor(COLORS.TRANSPARENT);
+  setFillColor(COLORS.GREY);
+  
+  rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  
+  setStrokeColor(COLORS.WHITE);
+  
+  for (var offset = 0; offset <= CANVAS_SIZE; offset += cellSize) {
+    line(offset, 0,      offset,      CANVAS_SIZE); // Vertical gridline.
+    line(0,      offset, CANVAS_SIZE, offset);      // Horizontal gridline.
+  }
+}
+
+
+function adjustMinesSlider() {
+  var maxTotalMines = Math.floor(newDimension * newDimension / 3);
+  
+  if (newTotalMines > maxTotalMines) {
+    newTotalMines = maxTotalMines;
+    
+    setNumber("minesInput", maxTotalMines);
+    setNumber("minesSlider", maxTotalMines);
+  }
+  
+  setProperty("minesSlider", "max", maxTotalMines);
+}
+
+
+// -----------------------------------------------------------------------------
+// | EVENT HANDLERS                                                            |
+// -----------------------------------------------------------------------------
+// Main game screen ------------------------------------------------------------
+onEvent("gameCanvas", "click", function(event) {
+  var clickPos = new Vec2(
+    Math.floor(event.offsetX / cellSize),
+    Math.floor(event.offsetY / cellSize)
+  );
+  
+  var state = getState(clickPos);
+  
+  if (event.shiftKey) {
+    if (!(state instanceof Open)) {
+      toggleFlag(clickPos);
+    }
+  } else if (!state.flagged){
+    if (!hasGenMines) {
+      populateMines(clickPos);
+      hasGenMines = true;
+    }
+    
+    if (state instanceof Mine) {
+      lose();
+    } else if (state instanceof Close) {
+      openCell(clickPos);
+    }
+  }
+});
+
+
+onEvent("settingsButton", "click", function() {
+  newDimension = dimension;
+  newTotalMines = totalMines;
+  
+  setNumber("dimensionInput", dimension);
+  setNumber("dimensionSlider", dimension);
+  setNumber("minesInput", totalMines);
+  setNumber("minesSlider", totalMines);
+  setProperty("minesSlider", "max", Math.floor(dimension * dimension / 3));
+  
+  setScreen("settingsScreen");
+});
+
+
+onEvent("instructionsButton", "click", function() {
+  setScreen("instructionsScreen");
+});
+
+
+onEvent("restartButton", "click", function() {
+  initGame();
+});
+
+
+// Settings screen -------------------------------------------------------------
+onEvent("closeButton", "click", function() {
+  setScreen("gameScreen");
+});
+
+
+onEvent("saveButton", "click", function() {
+  dimension = newDimension;
+  totalMines = newTotalMines;
+  
+  cellSize = CANVAS_SIZE / dimension;
+  margin = cellSize * 0.15;
+  imageSize = cellSize - 2 * margin;
+  
+  initGame();
+
+  setScreen("gameScreen");
+});
+
+
+// See citation [2]
+onEvent("dimensionInput", "input", function() {
+  var inputDimension = getNumber("dimensionInput");
+  if (!isNaN(inputDimension)) {
+    setNumber("dimensionSlider", inputDimension);
+  }
+});
+
+
+// See citation [2]
+onEvent("dimensionInput", "change", function() {
+  var inputDimension = getNumber("dimensionInput");
+  
+  if (isNaN(newDimension) || inputDimension > 20) {
+    newDimension = 20;
+    setNumber("dimensionInput", 20);
+  } else if (inputDimension < 4) {
+    newDimension = 4;
+    setNumber("dimensionInput", 4);
+  } else {
+    newDimension = inputDimension;
+  }
+  
+  setNumber("dimensionSlider", newDimension);
+  adjustMinesSlider();
+});
+
+
+// See citation [2]
+onEvent("dimensionSlider", "input", function() {
+  newDimension = getNumber("dimensionSlider");
+  setNumber("dimensionInput", newDimension);
+  
+  adjustMinesSlider();
+});
+
+
+// See citation [2]
+onEvent("minesInput", "input", function() {
+  var inputTotalMines = getNumber("minesInput");
+  if (!isNaN(inputTotalMines)) {
+    setNumber("minesSlider", inputTotalMines);
+  }
+});
+
+
+// See citation [2]
+onEvent("minesInput", "change", function() {
+  var inputTotalMines = getNumber("minesInput");
+  var maxMines = +getProperty("minesSlider", "max");
+  
+  if (isNaN(inputTotalMines) || inputTotalMines > maxMines) {
+    newTotalMines = maxMines;
+    setNumber("minesInput", maxMines);
+  } else if (inputTotalMines < 4) {
+    newTotalMines = 4;
+    setNumber("minesInput", 4);
+  } else {
+    newTotalMines = inputTotalMines;
+  }
+});
+
+
+// See citation [2]
+onEvent("minesSlider", "input", function() {
+  newTotalMines = getNumber("minesSlider");
+  setNumber("minesInput", newTotalMines);
+});
+
+
+// Win screen ------------------------------------------------------------------
+onEvent("replayButton", "click", function() {
+  initGame();
+  setScreen("gameScreen");
+});
+
+
+// Instructions screen ---------------------------------------------------------
+onEvent("backButton", "click", function() {
+  setScreen("gameScreen");
+});
+
+
+// -----------------------------------------------------------------------------
+// | GAME INITIALIZATION                                                       |
+// -----------------------------------------------------------------------------
+setActiveCanvas("gameCanvas");
+initGame();
+
+
+// -----------------------------------------------------------------------------
+// | CITATIONS                                                                 |
+// -----------------------------------------------------------------------------
+/*
+[1] twoDigit function
+    Taken from my code in the Unit 9 "Designing an App" project on Code.org.
+
+[2] Text input and slider interaction event handlers
+    Taken from my code in the Unit 4 "Decision Maker App" project on Code.org.
+
+- All icons (flag, timer, button icons, and numbers) are courtesy of
+https://remixicon.com/.
+- The color pallete used is https://flatuicolors.com/palette/de.
+- All sounds belong to Code.org.
+*/
+
